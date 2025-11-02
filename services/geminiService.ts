@@ -2,25 +2,24 @@
 import { GoogleGenAI } from "@google/genai";
 import { Game, PastGame, AiAnalysisResponse } from "../types";
 
-// Pegando a chave de API de forma segura via variável de ambiente
-const API_KEY = import.meta.env.VITE_GOOGLE_GENAI_API_KEY;
+// ==========================
+// ⚠️ Apenas para teste local
+// Não use assim em produção!
+// ==========================
+const API_KEY = "AIzaSyAYFrvwyF57LT3HoecDgsNXtm1rmxjG5mo";
 
 if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+  throw new Error("API_KEY not set");
 }
 
-// Inicializa o cliente da Gemini AI
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 /**
- * Tenta extrair JSON de um texto da IA
+ * Função para extrair JSON do texto da IA
  */
 async function parseJsonResponse<T>(text: string): Promise<T> {
   try {
-    // Remove espaços em excesso e possíveis explicações antes/depois do JSON
     const trimmed = text.trim();
-
-    // Detecta se começa com '[' ou '{'
     const firstChar = trimmed[0];
     const lastChar = trimmed[trimmed.length - 1];
 
@@ -28,49 +27,26 @@ async function parseJsonResponse<T>(text: string): Promise<T> {
       return JSON.parse(trimmed) as T;
     }
 
-    // Caso haja algum texto antes ou depois do JSON
     const jsonStart = trimmed.indexOf("{") !== -1 ? trimmed.indexOf("{") : trimmed.indexOf("[");
     const jsonEnd = trimmed.lastIndexOf("}") !== -1 ? trimmed.lastIndexOf("}") : trimmed.lastIndexOf("]");
-
     const jsonString = trimmed.substring(jsonStart, jsonEnd + 1);
     return JSON.parse(jsonString) as T;
   } catch (e) {
-    console.error("Falha ao processar JSON da API:", e);
-    throw new Error("A resposta da IA não pôde ser interpretada como JSON válido.");
+    console.error("Erro ao processar JSON da IA:", e);
+    throw new Error("Resposta da IA inválida.");
   }
 }
 
 /**
- * Busca todos os jogos do dia (exemplo usando IA, mas recomenda-se API esportiva real)
+ * Busca todos os jogos do dia
  */
 export async function fetchGamesOfTheDay(): Promise<Game[]> {
   const prompt = `
-    Retorne TODOS os jogos de hoje em formato JSON puro como um array.
-    Cada jogo deve ter:
-    {
-      "id": "string",
-      "sport": "Futebol | Basquete | Tênis ...",
-      "date": "AAAA-MM-DD",
-      "homeTeam": "string",
-      "homeLogo": "URL ou null",
-      "awayTeam": "string",
-      "awayLogo": "URL ou null",
-      "time": "horário ou status",
-      "league": "string",
-      "homeScore": number|null,
-      "awayScore": number|null,
-      "status": "SCHEDULED|LIVE|FINISHED|POSTPONED",
-      "elapsedTime": number|null,
-      "homeStats": object|null,
-      "awayStats": object|null,
-      "prediction": {
-        "homeWinPercentage": number,
-        "awayWinPercentage": number,
-        "drawPercentage": number|null
-      },
-      "whereToWatch": [{"name": "string", "url": "string|null"}]
-    }
-    Retorne somente o JSON, sem explicações.
+    Retorne TODOS os jogos de hoje em JSON puro (array).
+    Cada jogo deve conter: id, sport, date, homeTeam, homeLogo, awayTeam, awayLogo,
+    time, league, homeScore, awayScore, status, elapsedTime, homeStats, awayStats,
+    prediction {homeWinPercentage, awayWinPercentage, drawPercentage}, whereToWatch [{name, url}]
+    Retorne somente JSON.
   `;
 
   try {
@@ -80,7 +56,6 @@ export async function fetchGamesOfTheDay(): Promise<Game[]> {
       config: { responseMimeType: "application/json" },
     });
 
-    // Use output_text (ou ajuste se sua SDK for diferente)
     const jsonText = response.output_text ?? response.text ?? "";
     return parseJsonResponse<Game[]>(jsonText);
   } catch (error) {
@@ -90,7 +65,7 @@ export async function fetchGamesOfTheDay(): Promise<Game[]> {
 }
 
 /**
- * Busca histórico de jogos passado usando a IA
+ * Histórico de jogos
  */
 async function fetchHistory(prompt: string): Promise<PastGame[]> {
   try {
@@ -110,8 +85,8 @@ async function fetchHistory(prompt: string): Promise<PastGame[]> {
 
 export async function fetchTeamHistory(teamName: string): Promise<PastGame[]> {
   const prompt = `
-    Retorne o histórico de jogos do time "${teamName}" no último mês em formato JSON array.
-    Cada objeto deve ter: date, homeTeam, homeLogo, awayTeam, awayLogo, homeScore, awayScore, league.
+    Retorne o histórico de jogos do time "${teamName}" no último mês em JSON array.
+    Campos: date, homeTeam, homeLogo, awayTeam, awayLogo, homeScore, awayScore, league.
   `;
   return fetchHistory(prompt);
 }
@@ -119,18 +94,18 @@ export async function fetchTeamHistory(teamName: string): Promise<PastGame[]> {
 export async function fetchHeadToHeadHistory(homeTeam: string, awayTeam: string): Promise<PastGame[]> {
   const prompt = `
     Retorne os últimos 10 confrontos entre "${homeTeam}" e "${awayTeam}" em JSON array.
-    Cada objeto: date, homeTeam, homeLogo, awayTeam, awayLogo, homeScore, awayScore, league.
+    Campos: date, homeTeam, homeLogo, awayTeam, awayLogo, homeScore, awayScore, league.
   `;
   return fetchHistory(prompt);
 }
 
 /**
- * Faz análise de IA detalhada do jogo
+ * Análise de IA do jogo
  */
 export async function fetchAiAnalysis(game: Game, type: "quick" | "deep"): Promise<AiAnalysisResponse> {
   const instructions = type === "quick"
     ? "Análise concisa baseada nos dados fornecidos."
-    : "Análise profunda, incluindo fatores externos e fontes, listando URLs consultadas.";
+    : "Análise profunda, incluindo fatores externos e URLs de fontes consultadas.";
 
   const prompt = `
     Você é analista esportivo de IA.
@@ -160,4 +135,4 @@ export async function fetchAiAnalysis(game: Game, type: "quick" | "deep"): Promi
     console.error("Erro na análise de IA:", error);
     throw new Error("Não foi possível realizar a análise de IA.");
   }
-      }
+}
