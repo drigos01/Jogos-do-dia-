@@ -8,7 +8,7 @@ if (!API_KEY) {
   throw new Error("API_KEY environment variable not set");
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+const ai = new GoogleGenAI({ apiKey: AIzaSyAYFrvwyF57LT3HoecDgsNXtm1rmxjG5mo });
 
 async function parseJsonResponse<T>(text: string): Promise<T> {
     const jsonStart = text.indexOf('{');
