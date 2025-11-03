@@ -1,12 +1,10 @@
-
 import React from 'react';
 
 const LoadingSpinner: React.FC = () => {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-20">
-      <div className="w-16 h-16 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
-      <h2 className="text-xl font-semibold text-text-primary">Buscando os jogos...</h2>
-      <p className="text-text-secondary mt-1">Isso pode levar alguns segundos.</p>
+    <div className="flex justify-center items-center py-12">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+      <span className="ml-3 text-text-secondary">Carregando jogos...</span>
     </div>
   );
 };
