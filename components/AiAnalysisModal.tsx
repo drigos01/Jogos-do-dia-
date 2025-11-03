@@ -1,9 +1,6 @@
-
 import React from 'react';
 import { Game, AiAnalysisResponse } from '../types';
 import Modal from './Modal';
-import LoadingSpinner from './LoadingSpinner';
-import PieChart from './PieChart';
 
 interface AiAnalysisModalProps {
   isOpen: boolean;
@@ -22,102 +19,151 @@ const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
   onRunAnalysis,
   isLoading,
   error,
-  analysisResult,
+  analysisResult
 }) => {
-  const modalTitle = `Análise IA: ${game.homeTeam} vs ${game.awayTeam}`;
-
-  const renderAnalysisResult = (result: AiAnalysisResponse) => (
-    <div className="space-y-6 animate-fade-in">
-        <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
-            <PieChart percentage={result.confidence} />
-            <div className="flex-1">
-                <p className="text-sm font-bold text-accent uppercase">Previsão da IA</p>
-                <h3 className="text-3xl md:text-4xl font-bold text-text-primary mt-1">{result.predictedWinner}</h3>
-                <p className="text-text-secondary mt-2">Com {result.confidence}% de confiança na análise.</p>
-            </div>
-        </div>
-
-        <div>
-            <h4 className="font-bold text-text-primary mb-2">Fatores Chave</h4>
-            <ul className="list-disc list-inside space-y-1 text-text-secondary text-sm">
-                {result.keyFactors.map((factor, index) => <li key={index}>{factor}</li>)}
-            </ul>
-        </div>
-        
-        <div>
-            <h4 className="font-bold text-text-primary mb-2">Análise Detalhada</h4>
-            <p className="text-text-secondary text-sm bg-brand-bg/50 p-3 rounded-md leading-relaxed">{result.detailedAnalysis}</p>
-        </div>
-
-        {result.sources && result.sources.length > 0 && (
-            <div>
-                <h4 className="font-bold text-text-primary mb-2">Fontes de Dados</h4>
-                <ul className="space-y-1 text-sm">
-                    {result.sources.map((source, index) => (
-                        <li key={index}>
-                            <a href={source} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline truncate block">
-                                {source}
-                            </a>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-        )}
-    </div>
-  );
-
-  const renderInitialState = () => (
-    <div className="text-center min-h-[250px] flex flex-col items-center justify-center">
-      <h3 className="text-lg font-bold text-text-primary">Selecione o tipo de análise</h3>
-      <p className="text-text-secondary mt-1 text-sm max-w-sm mx-auto">
-          A análise profunda busca mais dados em tempo real e pode levar mais tempo para ser concluída.
-      </p>
-    </div>
-  );
-  
-  const renderLoading = () => (
-    <div className="min-h-[250px] flex flex-col items-center justify-center text-center">
-        <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
-        <h3 className="text-lg font-semibold text-text-primary">A IA está analisando a partida...</h3>
-        <p className="text-text-secondary mt-1 text-sm">Isso pode levar um momento, especialmente na análise profunda.</p>
-    </div>
-  );
-
-  const renderError = () => (
-    <div className="min-h-[250px] flex flex-col items-center justify-center text-center text-red-400 p-4">
-        <p className="font-semibold">Ocorreu um erro na análise:</p>
-        <p className="text-sm mt-1">{error}</p>
-    </div>
-  );
-
-  const renderContent = () => {
-    if (isLoading) return renderLoading();
-    if (error) return renderError();
-    if (analysisResult) return renderAnalysisResult(analysisResult);
-    return renderInitialState();
-  };
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={modalTitle}>
-      <div className="flex flex-col space-y-4">
-        <div className="p-1">{renderContent()}</div>
-
-        <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-white/10">
-          <button
-            onClick={() => onRunAnalysis('quick')}
-            disabled={isLoading}
-            className="w-full px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-500 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            Análise Rápida
-          </button>
-          <button
-            onClick={() => onRunAnalysis('deep')}
-            disabled={isLoading}
-            className="w-full px-4 py-2 bg-purple-700 text-white font-bold rounded-lg hover:bg-purple-600 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            Análise Profunda
-          </button>
+    <Modal isOpen={isOpen} onClose={onClose} title="Análise de IA">
+      <div className="space-y-6">
+        {/* Informações do jogo */}
+        <div className="bg-gray-800/30 rounded-lg p-4">
+          <div className="flex justify-between items-center">
+            <div className="text-center flex-1">
+              <div className="text-text-primary font-semibold">{game.homeTeam}</div>
+              <div className="text-text-secondary text-sm">Casa</div>
+            </div>
+            <div className="text-text-primary font-bold text-xl mx-4">VS</div>
+            <div className="text-center flex-1">
+              <div className="text-text-primary font-semibold">{game.awayTeam}</div>
+              <div className="text-text-secondary text-sm">Fora</div>
+            </div>
+          </div>
+          <div className="text-center mt-2 text-text-secondary text-sm">
+            {game.league} • {game.date} • {game.time}
+          </div>
         </div>
+
+        {/* Botões de análise */}
+        {!analysisResult && (
+          <div className="flex space-x-4">
+            <button
+              onClick={() => onRunAnalysis('quick')}
+              disabled={isLoading}
+              className="flex-1 bg-accent hover:bg-accent-hover text-white py-3 px-4 rounded-lg font-semibold transition-colors disabled:opacity-50"
+            >
+              ⚡ Análise Rápida
+            </button>
+            <button
+              onClick={() => onRunAnalysis('deep')}
+              disabled={isLoading}
+              className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-lg font-semibold transition-colors disabled:opacity-50"
+            >
+              🔍 Análise Detalhada
+            </button>
+          </div>
+        )}
+
+        {/* Loading */}
+        {isLoading && (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto mb-4"></div>
+            <p className="text-text-secondary">Analisando o jogo com IA...</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+            <div className="text-red-400 font-semibold mb-2">Erro na análise</div>
+            <p className="text-text-secondary">{error}</p>
+            <button
+              onClick={() => onRunAnalysis('quick')}
+              className="mt-3 bg-accent hover:bg-accent-hover text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
+            >
+              Tentar Novamente
+            </button>
+          </div>
+        )}
+
+        {/* Resultado da análise */}
+        {analysisResult && (
+          <div className="space-y-6">
+            {/* Vencedor previsto */}
+            <div className="bg-gradient-to-r from-accent/20 to-purple-600/20 rounded-lg p-6 text-center">
+              <div className="text-text-secondary text-sm mb-2">Vencedor Previsto</div>
+              <div className="text-2xl font-bold text-text-primary mb-2">
+                {analysisResult.predictedWinner}
+              </div>
+              <div className="text-accent font-semibold">
+                Confiança: {analysisResult.confidence}%
+              </div>
+            </div>
+
+            {/* Probabilidades */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center bg-gray-800/30 rounded-lg p-4">
+                <div className="text-green-400 text-2xl font-bold">
+                  {analysisResult.probabilities.home}%
+                </div>
+                <div className="text-text-secondary text-sm">Casa</div>
+              </div>
+              <div className="text-center bg-gray-800/30 rounded-lg p-4">
+                <div className="text-yellow-400 text-2xl font-bold">
+                  {analysisResult.probabilities.draw}%
+                </div>
+                <div className="text-text-secondary text-sm">Empate</div>
+              </div>
+              <div className="text-center bg-gray-800/30 rounded-lg p-4">
+                <div className="text-blue-400 text-2xl font-bold">
+                  {analysisResult.probabilities.away}%
+                </div>
+                <div className="text-text-secondary text-sm">Fora</div>
+              </div>
+            </div>
+
+            {/* Fatores-chave */}
+            <div>
+              <h3 className="text-text-primary font-semibold mb-3">Fatores Decisivos</h3>
+              <ul className="space-y-2">
+                {analysisResult.keyFactors.map((factor, index) => (
+                  <li key={index} className="flex items-start space-x-3">
+                    <span className="text-accent mt-1">•</span>
+                    <span className="text-text-secondary">{factor}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Análise detalhada */}
+            <div>
+              <h3 className="text-text-primary font-semibold mb-3">Análise Detalhada</h3>
+              <p className="text-text-secondary leading-relaxed">
+                {analysisResult.detailedAnalysis}
+              </p>
+            </div>
+
+            {/* Fontes */}
+            <div>
+              <h3 className="text-text-primary font-semibold mb-3">Fontes</h3>
+              <div className="flex flex-wrap gap-2">
+                {analysisResult.sources.map((source, index) => (
+                  <span
+                    key={index}
+                    className="bg-gray-700 text-text-secondary text-sm px-3 py-1 rounded-full"
+                  >
+                    {source}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => onRunAnalysis('deep')}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-lg font-semibold transition-colors"
+            >
+              🔍 Fazer Análise Mais Detalhada
+            </button>
+          </div>
+        )}
       </div>
     </Modal>
   );
