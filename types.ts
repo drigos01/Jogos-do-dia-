@@ -1,4 +1,3 @@
-
 export interface GameStats {
     fouls: number | null;
     yellowCards: number | null;
@@ -21,6 +20,12 @@ export interface Broadcast {
   url?: string;
 }
 
+export interface GameOdds {
+  homeWin: number | null;
+  awayWin: number | null;
+  draw: number | null;
+}
+
 export interface Game {
   id: string;
   sport: string;
@@ -38,6 +43,7 @@ export interface Game {
   homeStats?: GameStats;
   awayStats?: GameStats;
   prediction?: GamePrediction;
+  odds?: GameOdds;
   whereToWatch?: Broadcast[];
 }
 
@@ -82,11 +88,33 @@ export interface PredictionResult {
     gameId: string;
     gameDate: string;
     homeTeam: string;
+    homeLogo: string;
     awayTeam: string;
+    awayLogo: string;
     homeScore: number;
     awayScore: number;
     predictedOutcome: PredictedOutcome;
     actualOutcome: PredictedOutcome;
     isHit: boolean;
     sport: string;
+}
+
+export interface Bet {
+  id: string;
+  gameId: string;
+  betOn: PredictedOutcome;
+  amount: number;
+  odds: number;
+  status: 'PENDING' | 'WON' | 'LOST';
+  potentialWinnings: number;
+  gameDetails: {
+    homeTeam: string;
+    homeLogo: string;
+    awayTeam: string;
+    awayLogo: string;
+    date: string;
+    sport: string;
+  };
+  finalHomeScore?: number | null;
+  finalAwayScore?: number | null;
 }

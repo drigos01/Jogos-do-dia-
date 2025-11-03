@@ -1,40 +1,16 @@
-
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Game, PastGame, AiAnalysisResponse } from '../types';
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
+const API_KEY = "AIzaSyCqWLo4IFgD9b2DUtFbyRN1rUKcByvmLRs";
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-async function parseJsonResponse<T>(text: string): Promise<T> {
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    const arrayStart = text.indexOf('[');
-    const arrayEnd = text.lastIndexOf(']');
-
-    if ((jsonStart === -1 || jsonEnd === -1) && (arrayStart === -1 || arrayEnd === -1)) {
-        console.error("Invalid response format from API: No JSON object or array found", text);
-        throw new Error("A API retornou um formato de dados inválido.");
-    }
-
-    let jsonString: string;
-    if (arrayStart !== -1 && (arrayStart < jsonStart || jsonStart === -1)) {
-        // It's an array
-        jsonString = text.substring(arrayStart, arrayEnd + 1);
-    } else {
-        // It's an object
-        jsonString = text.substring(jsonStart, jsonEnd + 1);
-    }
-
+function parseJsonResponse<T>(text: string): T {
     try {
-      const parsedData = JSON.parse(jsonString);
-      return parsedData as T;
+      const cleanedText = text.trim().replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+      return JSON.parse(cleanedText) as T;
     } catch (e) {
-      console.error("Failed to parse JSON:", e, "--- Original string was:", jsonString);
+      console.error("Failed to parse JSON:", e, "--- Original string was:", text);
       throw new Error("Falha ao processar a resposta da API. O formato do JSON é inválido.");
     }
 }
@@ -43,7 +19,7 @@ export async function fetchGamesOfTheDay(): Promise<Game[]> {
   const prompt = `
     Sua tarefa principal é atuar como um agregador de dados esportivos. Forneça uma lista o mais completa e EXAUSTIVA possível com absolutamente TODOS os jogos do dia de hoje de uma vasta gama de esportes populares (futebol, basquete, tênis, vôlei, e-sports, MMA, hóquei, futebol americano, etc.), incluindo ligas principais e também as menores.
 
-    Para cada jogo, você deve consultar e sintetizar informações de pelo menos 10 sites diferentes de apostas esportivas e análise para calcular uma probabilidade de resultado.
+    Para cada jogo, você deve consultar e sintetizar informações de pelo menos 10 sites diferentes de apostas esportivas e análise para calcular uma probabilidade de resultado e as odds médias de aposta.
 
     Forneça as seguintes informações em formato JSON:
     - "id": um identificador único para o jogo (ex: 'futebol-brasileirao-FLAvsCOR-20241026')
@@ -62,6 +38,7 @@ export async function fetchGamesOfTheDay(): Promise<Game[]> {
     - "homeStats": Objeto com estatísticas para o time da casa.
     - "awayStats": Objeto com estatísticas para o time visitante.
     - "prediction": Um objeto com a probabilidade de resultado baseada na sua análise agregada. Deve conter: { "homeWinPercentage": number, "awayWinPercentage": number, "drawPercentage": number }. Os valores devem ser a média das probabilidades encontradas nos sites consultados. A soma deve ser próxima de 100. Se o esporte não permite empate (ex: Tênis), "drawPercentage" deve ser 0 ou null.
+    - "odds": Um objeto com as odds (cotações) médias de aposta em formato decimal, baseado na sua análise de sites de apostas. Deve conter: { "homeWin": number, "awayWin": number, "draw": number }. Se o esporte não permite empate, "draw" deve ser null. Exemplo: { "homeWin": 1.85, "awayWin": 4.50, "draw": 3.20 }. Se não encontrar odds, use null para os valores.
     - "whereToWatch": um array de objetos, onde cada objeto tem "name" (o nome do canal/serviço, ex: 'ESPN', 'Star+') e "url" (o link direto para a transmissão online, se aplicável e disponível). Se não for online, o campo "url" deve ser null. Se não houver informação de transmissão, retorne um array vazio [].
 
     Se uma informação como placar ou estatística não estiver disponível ou o jogo não tiver começado, use null. No entanto, para jogos com status 'LIVE' ou 'FINISHED', o fornecimento de estatísticas detalhadas é OBRIGATÓRIO, sempre que os dados existirem. Forneça estatísticas relevantes para cada esporte.
@@ -75,6 +52,9 @@ export async function fetchGamesOfTheDay(): Promise<Game[]> {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+      }
     });
     
     return parseJsonResponse<Game[]>(response.text);
@@ -90,6 +70,9 @@ async function fetchHistory(prompt: string): Promise<PastGame[]> {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+      }
     });
     return parseJsonResponse<PastGame[]>(response.text);
   } catch (error) {
@@ -177,12 +160,36 @@ export async function fetchAiAnalysis(game: Game, type: 'quick' | 'deep'): Promi
             contents: prompt,
             config: {
               responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  predictedWinner: { type: Type.STRING },
+                  confidence: { type: Type.NUMBER },
+                  probabilities: {
+                    type: Type.OBJECT,
+                    properties: {
+                      home: { type: Type.NUMBER },
+                      away: { type: Type.NUMBER },
+                      draw: { type: Type.NUMBER },
+                    },
+                    required: ['home', 'away', 'draw'],
+                  },
+                  keyFactors: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  detailedAnalysis: { type: Type.STRING },
+                  sources: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                },
+                required: ['predictedWinner', 'confidence', 'probabilities', 'keyFactors', 'detailedAnalysis', 'sources'],
+              },
             }
         });
         
-        // The API with responseMimeType should return a clean JSON string
-        const jsonText = response.text.trim();
-        return JSON.parse(jsonText) as AiAnalysisResponse;
+        return parseJsonResponse<AiAnalysisResponse>(response.text);
     } catch (error) {
         console.error('Error fetching analysis from Gemini API:', error);
         throw new Error('Não foi possível realizar a análise de IA.');

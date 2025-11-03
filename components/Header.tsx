@@ -1,10 +1,12 @@
-
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface HeaderProps {
   onRefresh: () => void;
   isLoading: boolean;
   onOpenHitRateModal: () => void;
+  onOpenBetHistoryModal: () => void;
+  userBalance: number;
+  liveGamesCount: number;
 }
 
 const RefreshIcon: React.FC<{className?: string}> = ({ className }) => (
@@ -19,7 +21,40 @@ const CheckIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
-const Header: React.FC<HeaderProps> = ({ onRefresh, isLoading, onOpenHitRateModal }) => {
+const WalletIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 3a9 9 0 0 0-18 0" />
+    </svg>
+);
+
+
+const Header: React.FC<HeaderProps> = ({ onRefresh, isLoading, onOpenHitRateModal, userBalance, onOpenBetHistoryModal, liveGamesCount }) => {
+  const [balanceChange, setBalanceChange] = useState<'win' | 'loss' | null>(null);
+  const prevBalanceRef = useRef(userBalance);
+
+  useEffect(() => {
+    if (prevBalanceRef.current !== userBalance) {
+      if (userBalance > prevBalanceRef.current) {
+        setBalanceChange('win');
+      } else if (userBalance < prevBalanceRef.current) {
+        setBalanceChange('loss');
+      }
+      
+      const timer = setTimeout(() => {
+        setBalanceChange(null);
+      }, 1000); // Animation duration
+
+      prevBalanceRef.current = userBalance;
+      return () => clearTimeout(timer);
+    }
+  }, [userBalance]);
+
+  const getBalanceClasses = () => {
+    if (balanceChange === 'win') return 'bg-green-500/30 text-green-300';
+    if (balanceChange === 'loss') return 'bg-red-500/30 text-red-300';
+    return 'bg-white/5';
+  }
+
   return (
     <header className="bg-card-bg/50 backdrop-blur-sm sticky top-0 z-10 shadow-md">
       <div className="container mx-auto flex justify-between items-center p-4">
@@ -37,8 +72,25 @@ const Header: React.FC<HeaderProps> = ({ onRefresh, isLoading, onOpenHitRateModa
                 </span>
                 <span>Tempo Real</span>
             </div>
+             {liveGamesCount > 0 && (
+                <div className="hidden md:flex items-center space-x-2 text-xs text-red-400 font-semibold bg-red-500/10 px-3 py-1 rounded-full animate-pulse">
+                    <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                    <span>{liveGamesCount} Ao Vivo</span>
+                </div>
+            )}
         </div>
         <div className="flex items-center gap-2">
+             <button
+              onClick={onOpenBetHistoryModal}
+              className={`flex items-center gap-2 p-2 rounded-full text-text-primary hover:bg-white/10 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-accent ${getBalanceClasses()}`}
+              aria-label="Ver histórico de apostas"
+            >
+                <WalletIcon className="h-6 w-6 text-accent" />
+                <span className="font-bold text-sm pr-2">${userBalance.toFixed(2)}</span>
+            </button>
             <button
               onClick={onOpenHitRateModal}
               className="p-2 rounded-full text-text-secondary hover:bg-white/10 hover:text-text-primary transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-accent"
@@ -49,7 +101,7 @@ const Header: React.FC<HeaderProps> = ({ onRefresh, isLoading, onOpenHitRateModa
             <button
               onClick={onRefresh}
               disabled={isLoading}
-              className="p-2 rounded-full text-text-secondary hover:bg-white/10 hover:text-text-primary transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 rounded-full text-text-secondary hover:bg-white/10 hover:text-text-primary transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-accent"
               aria-label="Atualizar jogos"
             >
               <RefreshIcon className={`h-6 w-6 ${isLoading ? 'animate-spin' : ''}`} />

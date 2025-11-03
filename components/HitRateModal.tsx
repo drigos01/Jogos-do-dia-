@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { PredictionResult } from '../types';
 import Modal from './Modal';
@@ -46,9 +45,15 @@ const HitRateModal: React.FC<HitRateModalProps> = ({ isOpen, onClose, history })
                         {history.length > 0 ? (
                             history.map(result => (
                                 <div key={result.gameId} className="bg-brand-bg/50 p-3 rounded-lg text-sm">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <p className="font-bold">{result.homeTeam} vs {result.awayTeam}</p>
-                                        <p className="text-xs text-text-secondary">{new Date(result.gameDate).toLocaleDateString()}</p>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-2 font-bold min-w-0 flex-wrap">
+                                            <img src={result.homeLogo ?? 'https://via.placeholder.com/24?text=?'} alt={result.homeTeam} className="w-6 h-6 object-contain" onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/24?text=?'; }}/>
+                                            <span className="truncate">{result.homeTeam}</span>
+                                            <span className="text-text-secondary">vs</span>
+                                            <span className="truncate">{result.awayTeam}</span>
+                                            <img src={result.awayLogo ?? 'https://via.placeholder.com/24?text=?'} alt={result.awayTeam} className="w-6 h-6 object-contain" onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/24?text=?'; }}/>
+                                        </div>
+                                        <p className="text-xs text-text-secondary flex-shrink-0 ml-2">{new Date(result.gameDate).toLocaleDateString()}</p>
                                     </div>
                                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-2 bg-black/20 p-2 rounded-md">
                                         <div>

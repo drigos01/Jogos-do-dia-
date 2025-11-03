@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Game, PastGame, ModalContentType, AiAnalysisResponse, ChatMessage, PredictionResult, PredictedOutcome } from './types';
+import { Game, ModalContentType, AiAnalysisResponse, PastGame, PredictionResult, PredictedOutcome } from './types';
 import { fetchGamesOfTheDay, fetchTeamHistory, fetchHeadToHeadHistory, fetchAiAnalysis } from './services/geminiService';
 import Header from './components/Header';
 import GameCard from './components/GameCard';
-import LoadingSpinner from './components/LoadingSpinner';
 import ErrorDisplay from './components/ErrorDisplay';
 import NoGamesDisplay from './components/NoGamesDisplay';
 import SportFilter from './components/SportFilter';
@@ -15,8 +14,12 @@ import GlobalChat from './components/GlobalChat';
 import UsernameModal from './components/UsernameModal';
 import ChatInterface from './components/ChatInterface';
 import HitRateModal from './components/HitRateModal';
-
-type AllChatMessages = Record<string, ChatMessage[]>; // 'global' or game.id as key
+import BetHistoryModal from './components/BetHistoryModal';
+import Toast, { ToastData } from './components/Toast';
+import { useBetting } from './hooks/useBetting';
+import { useChat } from './hooks/useChat';
+import GameCardSkeleton from './components/GameCardSkeleton';
+import LeagueFilter from './components/LeagueFilter';
 
 const App: React.FC = () => {
   const [games, setGames] = useState<Game[]>([]);
@@ -24,6 +27,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedSport, setSelectedSport] = useState<string>('Futebol');
+  const [selectedLeague, setSelectedLeague] = useState<string>('All');
   
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState<ModalContentType | null>(null);
@@ -36,109 +40,95 @@ const App: React.FC = () => {
   const [aiAnalysisResult, setAiAnalysisResult] = useState<AiAnalysisResponse | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  
+  const [toasts, setToasts] = useState<ToastData[]>([]);
 
-  // Chat State
-  const [username, setUsername] = useState<string | null>(null);
-  const [isUsernameModalOpen, setIsUsernameModalOpen] = useState(false);
-  const [pendingChatAction, setPendingChatAction] = useState<(() => void) | null>(null);
+  const addToast = useCallback((message: string, type: ToastData['type']) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  }, []);
+
+  const {
+    userBalance,
+    betHistory,
+    placeBet,
+    cancelBet,
+    settleBets
+  } = useBetting(addToast);
+
+  const {
+    username,
+    isUsernameModalOpen,
+    isGlobalChatOpen,
+    isGameChatOpen,
+    gameChatGame,
+    allChatMessages,
+    handleSetUsername,
+    handleToggleGlobalChat,
+    handleOpenGameChat,
+    handleSwitchToGlobalChat,
+    handleSwitchToGameChat,
+    handleSendMessage,
+    handleCloseGameChat,
+    handleCloseUsernameModal
+  } = useChat();
   
-  const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
-  const [isGameChatOpen, setIsGameChatOpen] = useState(false);
-  const [gameChatGame, setGameChatGame] = useState<Game | null>(null);
-  const [allChatMessages, setAllChatMessages] = useState<AllChatMessages>({});
-  
-  // Hit Rate State
   const [predictionHistory, setPredictionHistory] = useState<PredictionResult[]>([]);
   const [isHitRateModalOpen, setIsHitRateModalOpen] = useState(false);
+  const [isBetHistoryModalOpen, setIsBetHistoryModalOpen] = useState(false);
 
   useEffect(() => {
-    // Load persisted data from localStorage
-    const storedUsername = localStorage.getItem('chat_username');
-    if (storedUsername) setUsername(storedUsername);
-
-    try {
-        const storedMessages = localStorage.getItem('chat_messages');
-        if (storedMessages) setAllChatMessages(JSON.parse(storedMessages));
-    } catch (e) {
-        console.error("Failed to load chat messages from localStorage", e);
-        localStorage.removeItem('chat_messages');
-    }
-    
     try {
         const storedHistory = localStorage.getItem('prediction_history');
         if (storedHistory) setPredictionHistory(JSON.parse(storedHistory));
     } catch (e) {
         console.error("Failed to load prediction history from localStorage", e);
-        localStorage.removeItem('prediction_history');
     }
   }, []);
 
-  useEffect(() => {
-    // Persist data to localStorage
-    try {
-        localStorage.setItem('chat_messages', JSON.stringify(allChatMessages));
-    } catch (e) { console.error("Failed to save chat messages to localStorage", e); }
-  }, [allChatMessages]);
-  
   useEffect(() => {
     try {
         localStorage.setItem('prediction_history', JSON.stringify(predictionHistory));
     } catch (e) { console.error("Failed to save prediction history to localStorage", e); }
   }, [predictionHistory]);
-
+  
   const processFinishedGames = useCallback((finishedGames: Game[]) => {
+      settleBets(finishedGames);
+
       setPredictionHistory(prevHistory => {
           let newHistory = [...prevHistory];
           const processedGameIds = new Set(prevHistory.map(p => p.gameId));
 
           for (const game of finishedGames) {
-              if (!game.prediction || processedGameIds.has(game.id)) {
-                  continue; // Skip if no prediction or already processed
-              }
-
-              if (game.homeScore === null || game.awayScore === null) {
-                  continue; // Skip if score is not final
-              }
-
-              // Determine actual outcome
+              if (!game.prediction || processedGameIds.has(game.id)) continue;
+              if (game.homeScore === null || game.awayScore === null) continue;
+              
               let actualOutcome: PredictedOutcome;
               if (game.homeScore > game.awayScore) actualOutcome = 'HOME_WIN';
               else if (game.awayScore > game.homeScore) actualOutcome = 'AWAY_WIN';
               else actualOutcome = 'DRAW';
 
-              // Determine predicted outcome
               const { homeWinPercentage, awayWinPercentage, drawPercentage } = game.prediction;
               let predictedOutcome: PredictedOutcome;
               const draw = drawPercentage ?? 0;
               
-              if (homeWinPercentage > awayWinPercentage && homeWinPercentage > draw) {
-                  predictedOutcome = 'HOME_WIN';
-              } else if (awayWinPercentage > homeWinPercentage && awayWinPercentage > draw) {
-                  predictedOutcome = 'AWAY_WIN';
-              } else {
-                  predictedOutcome = 'DRAW';
-              }
+              if (homeWinPercentage > awayWinPercentage && homeWinPercentage > draw) predictedOutcome = 'HOME_WIN';
+              else if (awayWinPercentage > homeWinPercentage && awayWinPercentage > draw) predictedOutcome = 'AWAY_WIN';
+              else predictedOutcome = 'DRAW';
               
-              const newResult: PredictionResult = {
-                  gameId: game.id,
-                  gameDate: game.date,
-                  homeTeam: game.homeTeam,
-                  awayTeam: game.awayTeam,
-                  homeScore: game.homeScore,
-                  awayScore: game.awayScore,
-                  predictedOutcome,
-                  actualOutcome,
-                  isHit: predictedOutcome === actualOutcome,
-                  sport: game.sport,
-              };
-              
-              newHistory.push(newResult);
+              newHistory.push({
+                  gameId: game.id, gameDate: game.date, homeTeam: game.homeTeam,
+                  homeLogo: game.homeLogo, awayTeam: game.awayTeam, awayLogo: game.awayLogo,
+                  homeScore: game.homeScore, awayScore: game.awayScore,
+                  predictedOutcome, actualOutcome, isHit: predictedOutcome === actualOutcome, sport: game.sport,
+              });
           }
-          
           return newHistory.sort((a, b) => new Date(b.gameDate).getTime() - new Date(a.gameDate).getTime());
       });
-  }, []);
-
+  }, [settleBets]);
 
   const loadGames = useCallback(async () => {
     setIsLoading(true);
@@ -149,11 +139,8 @@ const App: React.FC = () => {
       setGames(fetchedGames);
       processFinishedGames(fetchedGames.filter(g => g.status === 'FINISHED'));
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Ocorreu um erro desconhecido.');
-      }
+      if (err instanceof Error) setError(err.message);
+      else setError('Ocorreu um erro desconhecido.');
       setGames([]);
     } finally {
       setIsLoading(false);
@@ -167,139 +154,47 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [loadGames]);
 
-  const withUsernameCheck = (action: () => void) => {
-    if (username) {
-      action();
-    } else {
-      setPendingChatAction(() => action);
-      setIsUsernameModalOpen(true);
-    }
+  const handleSelectSport = (sport: string) => {
+    setSelectedSport(sport);
+    setSelectedLeague('All');
   };
 
-  const handleSetUsername = (name: string) => {
-    const trimmedName = name.trim();
-    if (trimmedName) {
-      setUsername(trimmedName);
-      localStorage.setItem('chat_username', trimmedName);
-      setIsUsernameModalOpen(false);
-      if (pendingChatAction) {
-        pendingChatAction();
-        setPendingChatAction(null);
-      }
-    }
-  };
-
-  const handleToggleGlobalChat = () => {
-    withUsernameCheck(() => {
-        if (isGameChatOpen) setIsGameChatOpen(false);
-        setIsGlobalChatOpen(prev => !prev)
-    });
-  };
-  
-  const handleOpenGameChat = (game: Game) => {
-    withUsernameCheck(() => {
-        setGameChatGame(game);
-        setIsGameChatOpen(true);
-        if(isGlobalChatOpen) setIsGlobalChatOpen(false);
-    });
-  };
-  
-  const handleSwitchToGlobalChat = () => {
-    setIsGameChatOpen(false);
-    setGameChatGame(null);
-    setIsGlobalChatOpen(true);
-  };
-
-  const handleSwitchToGameChat = (game: Game) => {
-    setIsGlobalChatOpen(false);
-    handleOpenGameChat(game);
-  };
-
-  const handleSendMessage = (message: string, roomId: string) => {
-    if (!username) return;
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      username: username,
-      text: message,
-      timestamp: Date.now(),
-    };
-    
-    setAllChatMessages(prev => {
-        const roomMessages = prev[roomId] || [];
-        return {
-            ...prev,
-            [roomId]: [...roomMessages, newMessage]
-        };
-    });
-  };
-
-
-  const handleCardClick = (gameId: string) => {
-    setSelectedGameId(prevId => (prevId === gameId ? null : gameId));
-  };
-  
+  const handleCardClick = (gameId: string) => setSelectedGameId(prevId => (prevId === gameId ? null : gameId));
   const handleCloseHistoryModal = () => {
-    setIsHistoryModalOpen(false);
-    setModalContent(null);
-    setHistoryData(null);
-    setHistoryError(null);
+    setIsHistoryModalOpen(false); setModalContent(null); setHistoryData(null); setHistoryError(null);
   };
   
   const handleTeamClick = async (teamName: string) => {
-      setModalContent({ type: 'team', teamName });
-      setIsHistoryModalOpen(true);
-      setIsHistoryLoading(true);
-      setHistoryError(null);
+      setModalContent({ type: 'team', teamName }); setIsHistoryModalOpen(true); setIsHistoryLoading(true); setHistoryError(null);
       try {
-          const data = await fetchTeamHistory(teamName);
-          setHistoryData(data);
+          const data = await fetchTeamHistory(teamName); setHistoryData(data);
       } catch (err) {
-          if (err instanceof Error) setHistoryError(err.message);
-          else setHistoryError('Ocorreu um erro desconhecido.');
-      } finally {
-          setIsHistoryLoading(false);
-      }
+          if (err instanceof Error) setHistoryError(err.message); else setHistoryError('Ocorreu um erro desconhecido.');
+      } finally { setIsHistoryLoading(false); }
   };
   
   const handleH2HClick = async (homeTeam: string, awayTeam: string) => {
-      setModalContent({ type: 'h2h', homeTeam, awayTeam });
-      setIsHistoryModalOpen(true);
-      setIsHistoryLoading(true);
-      setHistoryError(null);
+      setModalContent({ type: 'h2h', homeTeam, awayTeam }); setIsHistoryModalOpen(true); setIsHistoryLoading(true); setHistoryError(null);
       try {
-          const data = await fetchHeadToHeadHistory(homeTeam, awayTeam);
-          setHistoryData(data);
+          const data = await fetchHeadToHeadHistory(homeTeam, awayTeam); setHistoryData(data);
       } catch (err) {
-          if (err instanceof Error) setHistoryError(err.message);
-          else setHistoryError('Ocorreu um erro desconhecido.');
-      } finally {
-          setIsHistoryLoading(false);
-      }
+          if (err instanceof Error) setHistoryError(err.message); else setHistoryError('Ocorreu um erro desconhecido.');
+      } finally { setIsHistoryLoading(false); }
   };
   
-  const handleOpenAiModal = (game: Game) => {
-    setSelectedGameForAi(game);
-    setIsAiModalOpen(true);
-  };
+  const handleOpenAiModal = (game: Game) => { setSelectedGameForAi(game); setIsAiModalOpen(true); };
+  const handleCloseAiModal = () => { setIsAiModalOpen(false); setSelectedGameForAi(null); setAiAnalysisResult(null); setAiError(null); };
 
-  const handleCloseAiModal = () => {
-    setIsAiModalOpen(false);
-    setSelectedGameForAi(null);
-    setAiAnalysisResult(null);
-    setAiError(null);
-  };
-
+  // FIX: Refactored function to have one statement per line to avoid potential parser issues.
   const handleRunAnalysis = async (analysisType: 'quick' | 'deep') => {
     if (!selectedGameForAi) return;
-
     setIsAiLoading(true);
     setAiAnalysisResult(null);
     setAiError(null);
-
     try {
       const result = await fetchAiAnalysis(selectedGameForAi, analysisType);
       setAiAnalysisResult(result);
-    } catch (err)      {
+    } catch (err) {
       const message = err instanceof Error ? err.message : 'Ocorreu um erro desconhecido na análise.';
       setAiError(message);
     } finally {
@@ -323,6 +218,10 @@ const App: React.FC = () => {
               onH2HClick={handleH2HClick}
               onAiAnalysisClick={handleOpenAiModal}
               onChatClick={handleOpenGameChat}
+              onPlaceBet={placeBet}
+              onCancelBet={cancelBet}
+              userBalance={userBalance}
+              placedBet={betHistory.find(b => b.gameId === game.id && b.status === 'PENDING') || null}
             />
           ))}
         </div>
@@ -331,9 +230,7 @@ const App: React.FC = () => {
   };
   
   const renderSportContent = (sportGames: Game[]) => {
-      if (!sportGames || sportGames.length === 0) {
-        return <NoGamesDisplay onRefresh={loadGames} />;
-      }
+      if (!sportGames || sportGames.length === 0) return <NoGamesDisplay onRefresh={loadGames} />;
 
       const liveGames = sportGames.filter(g => g.status === 'LIVE');
       const scheduledGames = sportGames.filter(g => g.status === 'SCHEDULED');
@@ -356,34 +253,34 @@ const App: React.FC = () => {
   
   const renderContent = () => {
     if (isLoading && games.length === 0) {
-      return <LoadingSpinner />;
+        return (
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {Array.from({ length: 8 }).map((_, i) => <GameCardSkeleton key={i} />)}
+          </div>
+        );
     }
-    if (error) {
-      return <ErrorDisplay message={error} onRetry={loadGames} />;
-    }
-    
-    if (games.length === 0 && !isLoading) {
-      return <NoGamesDisplay onRefresh={loadGames} />;
-    }
+    if (error) return <ErrorDisplay message={error} onRetry={loadGames} />;
+    if (games.length === 0 && !isLoading) return <NoGamesDisplay onRefresh={loadGames} />;
 
     const sports = ['Futebol', ...Object.keys(games.reduce((acc, game) => {
-        if (game.sport !== 'Futebol') {
-            acc[game.sport] = true;
-        }
+        if (game.sport !== 'Futebol') acc[game.sport] = true;
         return acc;
     }, {} as Record<string, boolean>)).sort()];
 
-    const displayedGames = games.filter(g => g.sport === selectedSport);
+    const gamesForSelectedSport = games.filter(g => g.sport === selectedSport);
+    const leagues = ['All', ...Array.from(new Set(gamesForSelectedSport.map(g => g.league)))];
+    const displayedGames = gamesForSelectedSport.filter(g => selectedLeague === 'All' || g.league === selectedLeague);
 
     return (
       <>
-        <SportFilter 
-          sports={sports}
-          activeSport={selectedSport}
-          onSelectSport={setSelectedSport}
-        />
+        <SportFilter sports={sports} activeSport={selectedSport} onSelectSport={handleSelectSport} />
+        {leagues.length > 2 && <LeagueFilter leagues={leagues} activeLeague={selectedLeague} onSelectLeague={setSelectedLeague} />}
         <div className="mt-8">
-            {isLoading && games.length > 0 ? <LoadingSpinner/> : renderSportContent(displayedGames)}
+            {isLoading && games.length > 0 ? (
+                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {Array.from({ length: 4 }).map((_, i) => <GameCardSkeleton key={i} />)}
+                 </div>
+            ) : renderSportContent(displayedGames)}
         </div>
       </>
     );
@@ -396,74 +293,53 @@ const App: React.FC = () => {
   };
 
   const activeGames = games.filter(g => g.status === 'LIVE' || g.status === 'SCHEDULED');
+  const liveGamesCount = games.filter(g => g.status === 'LIVE').length;
 
   return (
     <div className="min-h-screen bg-brand-bg text-text-primary font-sans">
-      <Header onRefresh={loadGames} isLoading={isLoading} onOpenHitRateModal={() => setIsHitRateModalOpen(true)} />
+      <div className="fixed top-4 right-4 z-[100] w-full max-w-xs space-y-2">
+        {toasts.map(toast => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onDismiss={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+          />
+        ))}
+      </div>
+      <Header 
+        onRefresh={loadGames} 
+        isLoading={isLoading} 
+        onOpenHitRateModal={() => setIsHitRateModalOpen(true)} 
+        userBalance={userBalance} 
+        onOpenBetHistoryModal={() => setIsBetHistoryModalOpen(true)}
+        liveGamesCount={liveGamesCount}
+      />
       <main className="container mx-auto p-4 md:p-8">
         {renderContent()}
       </main>
-      <Modal 
-        isOpen={isHistoryModalOpen}
-        onClose={handleCloseHistoryModal}
-        title={getHistoryModalTitle()}
-      >
-        <HistoryView 
-          isLoading={isHistoryLoading}
-          error={historyError}
-          data={historyData}
-        />
+      <Modal isOpen={isHistoryModalOpen} onClose={handleCloseHistoryModal} title={getHistoryModalTitle()}>
+        <HistoryView isLoading={isHistoryLoading} error={historyError} data={historyData} />
       </Modal>
       {selectedGameForAi && (
-        <AiAnalysisModal
-            isOpen={isAiModalOpen}
-            onClose={handleCloseAiModal}
-            game={selectedGameForAi}
-            onRunAnalysis={handleRunAnalysis}
-            isLoading={isAiLoading}
-            error={aiError}
-            analysisResult={aiAnalysisResult}
-        />
+        <AiAnalysisModal isOpen={isAiModalOpen} onClose={handleCloseAiModal} game={selectedGameForAi} onRunAnalysis={handleRunAnalysis} isLoading={isAiLoading} error={aiError} analysisResult={aiAnalysisResult} />
       )}
-       <HitRateModal 
-        isOpen={isHitRateModalOpen}
-        onClose={() => setIsHitRateModalOpen(false)}
-        history={predictionHistory}
-      />
-      <GlobalChat
-        isOpen={isGlobalChatOpen}
-        onToggle={handleToggleGlobalChat}
-        messages={allChatMessages['global'] || []}
-        onSendMessage={(msg) => handleSendMessage(msg, 'global')}
-        currentUser={username}
-        activeGames={activeGames}
-        onSwitchToGameChat={handleSwitchToGameChat}
-      />
+      <HitRateModal isOpen={isHitRateModalOpen} onClose={() => setIsHitRateModalOpen(false)} history={predictionHistory} />
+      <BetHistoryModal isOpen={isBetHistoryModalOpen} onClose={() => setIsBetHistoryModalOpen(false)} history={betHistory} balance={userBalance}/>
+      <GlobalChat isOpen={isGlobalChatOpen} onToggle={handleToggleGlobalChat} messages={allChatMessages['global'] || []} onSendMessage={(msg) => handleSendMessage(msg, 'global')} currentUser={username} activeGames={activeGames} onSwitchToGameChat={handleSwitchToGameChat} />
       <Modal
         isOpen={isGameChatOpen}
-        onClose={() => setIsGameChatOpen(false)}
+        onClose={handleCloseGameChat}
         title={gameChatGame ? `Chat: ${gameChatGame.homeTeam} vs ${gameChatGame.awayTeam}` : 'Chat do Jogo'}
         headerAction={
-            <button 
-                onClick={handleSwitchToGlobalChat}
-                className="text-xs font-bold bg-white/10 px-2 py-1 rounded-md text-text-secondary hover:bg-accent hover:text-white transition-colors"
-                aria-label="Ir para o chat global"
-            >
+            <button onClick={handleSwitchToGlobalChat} className="text-xs font-bold bg-white/10 px-2 py-1 rounded-md text-text-secondary hover:bg-accent hover:text-white transition-colors" aria-label="Ir para o chat global">
                 Ir para Chat Global
             </button>
         }
       >
-        <ChatInterface 
-          messages={gameChatGame ? (allChatMessages[gameChatGame.id] || []) : []}
-          onSendMessage={(msg) => gameChatGame && handleSendMessage(msg, gameChatGame.id)}
-          currentUser={username}
-        />
+        <ChatInterface messages={gameChatGame ? (allChatMessages[gameChatGame.id] || []) : []} onSendMessage={(msg) => gameChatGame && handleSendMessage(msg, gameChatGame.id)} currentUser={username} />
       </Modal>
-      <UsernameModal 
-        isOpen={isUsernameModalOpen}
-        onClose={() => setIsUsernameModalOpen(false)}
-        onSave={handleSetUsername}
-      />
+      <UsernameModal isOpen={isUsernameModalOpen} onClose={handleCloseUsernameModal} onSave={handleSetUsername} />
     </div>
   );
 };

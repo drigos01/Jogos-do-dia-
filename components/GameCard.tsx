@@ -1,6 +1,5 @@
-
-import React from 'react';
-import { Game, GamePrediction, GameStats } from '../types';
+import React, { useState } from 'react';
+import { Game, GamePrediction, GameStats, Bet, PredictedOutcome } from '../types';
 
 interface GameCardProps {
   game: Game;
@@ -10,6 +9,10 @@ interface GameCardProps {
   onH2HClick: (homeTeam: string, awayTeam: string) => void;
   onAiAnalysisClick: (game: Game) => void;
   onChatClick: (game: Game) => void;
+  onPlaceBet: (game: Game, betOn: PredictedOutcome, amount: number, odds: number) => void;
+  onCancelBet: (betId: string) => void;
+  userBalance: number;
+  placedBet: Bet | null;
 }
 
 const TeamDisplay: React.FC<{ name: string; logo: string; onClick: () => void; }> = ({ name, logo, onClick }) => (
@@ -67,46 +70,173 @@ const ScoreDisplay: React.FC<{ game: Game; onH2HClick: () => void; }> = ({ game,
     }
 };
 
-const PredictionBar: React.FC<{ prediction: GamePrediction }> = ({ prediction }) => {
-    const { homeWinPercentage, awayWinPercentage, drawPercentage } = prediction;
-    
-    if (homeWinPercentage === null || awayWinPercentage === null) return null;
+const BettingInterface: React.FC<{ game: Game; onPlaceBet: GameCardProps['onPlaceBet'], userBalance: number }> = ({ game, onPlaceBet, userBalance }) => {
+    const { odds } = game;
+    const [selectedOutcome, setSelectedOutcome] = useState<PredictedOutcome | null>(null);
+    const [betAmount, setBetAmount] = useState<string>('');
+    const [error, setError] = useState<string | null>(null);
 
-    const draw = drawPercentage ?? 0;
-    const home = homeWinPercentage;
-    const away = awayWinPercentage;
+    if (!odds || (odds.homeWin === null && odds.awayWin === null && odds.draw === null)) return null;
+
+    const handleBetAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        if (/^\d*\.?\d{0,2}$/.test(value)) { // Allows decimal for currency
+            setBetAmount(value);
+            setError(null);
+        }
+    };
+
+    const handlePlaceBetClick = () => {
+        const amount = parseFloat(betAmount);
+        if (!selectedOutcome || !amount || amount <= 0) {
+            setError("Selecione um resultado e insira um valor válido.");
+            return;
+        }
+        if (amount > userBalance) {
+            setError("Saldo insuficiente.");
+            return;
+        }
+
+        let selectedOdd: number | null = null;
+        if(selectedOutcome === 'HOME_WIN') selectedOdd = odds.homeWin;
+        if(selectedOutcome === 'AWAY_WIN') selectedOdd = odds.awayWin;
+        if(selectedOutcome === 'DRAW') selectedOdd = odds.draw;
+
+        if (selectedOdd) {
+            onPlaceBet(game, selectedOutcome, amount, selectedOdd);
+            setSelectedOutcome(null);
+            setBetAmount('');
+        }
+    };
+
+    const outcomes: { type: PredictedOutcome; odd: number | null; label: string }[] = [
+        { type: 'HOME_WIN', odd: odds.homeWin, label: game.homeTeam },
+        ...(odds.draw !== null ? [{ type: 'DRAW' as PredictedOutcome, odd: odds.draw, label: 'Empate' }] : []),
+        { type: 'AWAY_WIN', odd: odds.awayWin, label: game.awayTeam },
+    ];
+    
+    const selectedOdd = selectedOutcome ? outcomes.find(o => o.type === selectedOutcome)?.odd : null;
+    const potentialWinnings = betAmount && selectedOdd ? (parseFloat(betAmount) * selectedOdd).toFixed(2) : '0.00';
 
     return (
-        <div className="px-4 pt-4">
-             <h4 className="text-xs font-bold text-accent uppercase tracking-wider mb-2 text-center">Probabilidade de Resultado</h4>
-            <div className="w-full flex rounded-full h-6 bg-black/30 overflow-hidden text-white font-bold text-xs">
-                <div 
-                    style={{ width: `${home}%` }}
-                    className="flex items-center justify-center bg-blue-500 h-full transition-all duration-500"
-                    title={`Vitória ${Math.round(home)}%`}
-                >
-                    <span>{Math.round(home)}%</span>
-                </div>
-                {draw > 0 && (
-                    <div
-                        style={{ width: `${draw}%` }}
-                        className="flex items-center justify-center bg-gray-500 h-full transition-all duration-500"
-                        title={`Empate ${Math.round(draw)}%`}
+        <div className="px-4 py-3 bg-black/20" onClick={e => e.stopPropagation()}>
+            <h4 className="text-xs font-bold text-accent uppercase tracking-wider mb-3 text-center">Faça sua Aposta</h4>
+            <div className="grid grid-cols-3 gap-2">
+                {outcomes.map(({ type, odd, label }) => (
+                    <button 
+                        key={type}
+                        disabled={odd === null}
+                        onClick={() => setSelectedOutcome(type)}
+                        className={`p-2 text-center rounded-md text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-accent
+                            ${selectedOutcome === type ? 'bg-accent text-white font-bold' : 'bg-brand-bg text-text-secondary hover:bg-white/10'}
+                            ${odd === null ? 'opacity-50 cursor-not-allowed' : ''}
+                        `}
                     >
-                       <span>{Math.round(draw)}%</span>
-                    </div>
-                )}
-                <div
-                    style={{ width: `${away}%` }}
-                    className="flex items-center justify-center bg-red-500 h-full transition-all duration-500"
-                    title={`Vitória ${Math.round(away)}%`}
-                >
-                    <span>{Math.round(away)}%</span>
-                </div>
+                        <p className="truncate font-semibold">{label}</p>
+                        <p className="font-bold text-sm mt-1">{odd?.toFixed(2) ?? '-'}</p>
+                    </button>
+                ))}
             </div>
+            {selectedOutcome && (
+                <div className="mt-4 space-y-3 animate-fade-in">
+                     <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            value={betAmount}
+                            onChange={handleBetAmountChange}
+                            placeholder="Valor da aposta"
+                            className="w-full bg-brand-bg border border-white/20 rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                        <button
+                            onClick={handlePlaceBetClick}
+                            className="w-full px-4 py-2 bg-accent text-white font-bold rounded-md hover:bg-accent-hover transition-colors"
+                        >
+                            Apostar
+                        </button>
+                    </div>
+                    <div className="text-center text-xs text-text-secondary">
+                        <p>Ganhos Potenciais: <span className="font-bold text-accent-hover">${potentialWinnings}</span></p>
+                    </div>
+                </div>
+            )}
+             {error && <p className="text-red-400 text-xs text-center mt-2">{error}</p>}
         </div>
     );
 };
+
+const PlacedBetDisplay: React.FC<{ bet: Bet; game: Game; onCancel: (betId: string) => void }> = ({ bet, game, onCancel }) => {
+    const outcomeToString = (outcome: PredictedOutcome) => {
+        if (outcome === 'HOME_WIN') return game.homeTeam;
+        if (outcome === 'AWAY_WIN') return game.awayTeam;
+        return 'Empate';
+    };
+
+    return (
+        <div className="px-4 py-3 bg-accent/10 border-t-2 border-accent" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-3">
+                 <h4 className="text-sm font-bold text-accent uppercase tracking-wider">Sua Aposta</h4>
+                 <span className="font-bold text-xs bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full">PENDENTE</span>
+            </div>
+            <div className="bg-black/20 p-3 rounded-md text-center space-y-2">
+                <p className="text-lg font-bold text-text-primary">{outcomeToString(bet.betOn)}</p>
+                <div className="flex justify-evenly items-center text-xs text-text-secondary">
+                    <div>
+                        <p className="uppercase font-bold">Aposta</p>
+                        <p className="font-semibold text-text-primary text-sm">${bet.amount.toFixed(2)}</p>
+                    </div>
+                    <div>
+                        <p className="uppercase font-bold">Odds</p>
+                        <p className="font-semibold text-text-primary text-sm">@{bet.odds.toFixed(2)}</p>
+                    </div>
+                    <div>
+                        <p className="uppercase font-bold">Ganhos</p>
+                        <p className="font-bold text-accent-hover text-sm">${bet.potentialWinnings.toFixed(2)}</p>
+                    </div>
+                </div>
+            </div>
+             <button
+                onClick={() => onCancel(bet.id)}
+                className="w-full mt-3 text-center text-xs font-bold text-red-400 bg-red-500/10 py-1.5 rounded-md hover:bg-red-500/20 transition-colors"
+            >
+                Cancelar Aposta
+            </button>
+        </div>
+    );
+};
+
+const PredictionBar: React.FC<{ prediction: GamePrediction }> = ({ prediction }) => {
+  const { homeWinPercentage, awayWinPercentage, drawPercentage } = prediction;
+  if (homeWinPercentage === null || awayWinPercentage === null) return null;
+
+  const draw = drawPercentage ?? 0;
+  const home = homeWinPercentage;
+  const away = awayWinPercentage;
+  
+  const total = home + away + draw;
+  if (total === 0) return null;
+
+  const homeWidth = (home / total) * 100;
+  const drawWidth = (draw / total) * 100;
+  const awayWidth = (away / total) * 100;
+
+  return (
+    <div className="px-4 py-3 bg-black/20" onClick={e => e.stopPropagation()}>
+      <h4 className="text-xs font-bold text-accent uppercase tracking-wider mb-2 text-center">Probabilidade de Resultado</h4>
+      <div className="flex w-full h-3 rounded-full overflow-hidden bg-brand-bg">
+        <div style={{ width: `${homeWidth}%` }} className="bg-blue-500 transition-all duration-500" title={`Vitória anfitrião: ${home.toFixed(0)}%`}></div>
+        <div style={{ width: `${drawWidth}%` }} className="bg-gray-500 transition-all duration-500" title={`Empate: ${draw.toFixed(0)}%`}></div>
+        <div style={{ width: `${awayWidth}%` }} className="bg-red-500 transition-all duration-500" title={`Vitória visitante: ${away.toFixed(0)}%`}></div>
+      </div>
+       <div className="flex justify-between mt-2 text-xs font-semibold">
+          <span className="text-blue-400">{home.toFixed(0)}%</span>
+          {draw > 0 && <span className="text-gray-400">{draw.toFixed(0)}%</span>}
+          <span className="text-red-400">{away.toFixed(0)}%</span>
+       </div>
+       <p className="text-center text-[10px] text-text-secondary mt-2">*Probabilidade baseada na análise agregada de +10 sites especializados.</p>
+    </div>
+  );
+};
+
 
 const StatRow: React.FC<{ label: string; homeValue: number | null; awayValue: number | null }> = ({ label, homeValue, awayValue }) => {
     const home = homeValue ?? '-';
@@ -161,10 +291,11 @@ const GameDetails: React.FC<{ game: Game }> = ({ game }) => {
     );
 };
 
-const GameCard: React.FC<GameCardProps> = ({ game, isSelected, onCardClick, onTeamClick, onH2HClick, onAiAnalysisClick, onChatClick }) => {
-    const hasPrediction = game.prediction && game.status !== 'FINISHED';
+const GameCard: React.FC<GameCardProps> = ({ game, isSelected, onCardClick, onTeamClick, onH2HClick, onAiAnalysisClick, onChatClick, onPlaceBet, onCancelBet, userBalance, placedBet }) => {
     const hasDetails = (game.status === 'LIVE' || game.status === 'FINISHED') && (game.homeStats || game.awayStats);
     const hasBroadcastInfo = game.whereToWatch && game.whereToWatch.length > 0;
+    const canBet = game.status === 'SCHEDULED' && game.odds;
+    const canPredict = game.status === 'SCHEDULED' && game.prediction;
 
     return (
         <div className="bg-card-bg rounded-lg shadow-lg overflow-hidden flex flex-col justify-between transition-all duration-300 ease-in-out transform hover:-translate-y-1 hover:shadow-2xl">
@@ -190,24 +321,16 @@ const GameCard: React.FC<GameCardProps> = ({ game, isSelected, onCardClick, onTe
                         </div>
                     </div>
 
-                    {hasPrediction && game.prediction && <PredictionBar prediction={game.prediction} />}
-
-                    <div className="px-4 pb-3 pt-2 text-center">
-                        {hasPrediction && (
-                            <p className="text-xs text-text-secondary/70 mb-3">
-                                *Probabilidade baseada na análise agregada de +10 sites especializados.
-                            </p>
-                        )}
-                        
-                        {hasDetails && (
+                    {hasDetails && (
+                         <div className="px-4 pb-3 pt-2 text-center">
                             <div className="flex items-center justify-center gap-1 text-sm font-semibold text-accent hover:text-accent-hover transition-colors">
                                 <span>{isSelected ? 'Ocultar Estatísticas' : 'Ver Estatísticas'}</span>
                                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform duration-300 ${isSelected ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                                 </svg>
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
                 
                 <div 
@@ -217,8 +340,17 @@ const GameCard: React.FC<GameCardProps> = ({ game, isSelected, onCardClick, onTe
                     <GameDetails game={game} />
                 </div>
                  
+                {canPredict && <PredictionBar prediction={game.prediction!} />}
+
+                 {placedBet ? (
+                    <PlacedBetDisplay bet={placedBet} game={game} onCancel={onCancelBet} />
+                ) : (
+                    canBet && <BettingInterface game={game} onPlaceBet={onPlaceBet} userBalance={userBalance} />
+                )}
+
+
                 {hasBroadcastInfo && (
-                    <div className="px-4 py-3">
+                    <div className="px-4 py-3 border-t border-white/10">
                         <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Onde Assistir</h4>
                         <div className="flex flex-wrap gap-2">
                             {game.whereToWatch.map((channel) => (
