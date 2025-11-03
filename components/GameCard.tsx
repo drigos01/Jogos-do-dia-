@@ -53,27 +53,25 @@ const GameCard: React.FC<GameCardProps> = ({
 
   return (
     <div 
-      className={`game-card bg-card-bg rounded-xl p-4 cursor-pointer transition-all duration-300 ${
-        isSelected ? 'ring-2 ring-accent' : 'hover:ring-1 hover:ring-accent/50'
-      }`}
+      className={`game-card ${isSelected ? 'ring-2 ring-accent' : ''}`}
       onClick={() => onCardClick(game.id)}
     >
-      {/* Header com status e liga */}
-      <div className="flex justify-between items-center mb-3">
+      {/* Header */}
+      <div className="game-header">
         <span className={getStatusBadge()}>
           {getStatusText()}
         </span>
-        <span className="text-text-secondary text-sm font-medium">
+        <span className="league">
           {game.league}
         </span>
       </div>
 
-      {/* Times e placar */}
-      <div className="space-y-3">
+      {/* Times */}
+      <div className="teams-container">
         {/* Time da casa */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3 flex-1">
-            <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center text-xs font-bold">
+        <div className="team-row">
+          <div className="team-info">
+            <div className="team-logo">
               {game.homeTeam.charAt(0)}
             </div>
             <button 
@@ -81,20 +79,20 @@ const GameCard: React.FC<GameCardProps> = ({
                 e.stopPropagation();
                 onTeamClick(game.homeTeam);
               }}
-              className="text-text-primary font-semibold hover:text-accent transition-colors text-left"
+              className="team-name"
             >
               {game.homeTeam}
             </button>
           </div>
-          <div className="text-text-primary font-bold text-lg">
+          <div className="score">
             {game.homeScore !== null ? game.homeScore : '-'}
           </div>
         </div>
 
         {/* Time visitante */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3 flex-1">
-            <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center text-xs font-bold">
+        <div className="team-row">
+          <div className="team-info">
+            <div className="team-logo">
               {game.awayTeam.charAt(0)}
             </div>
             <button 
@@ -102,76 +100,70 @@ const GameCard: React.FC<GameCardProps> = ({
                 e.stopPropagation();
                 onTeamClick(game.awayTeam);
               }}
-              className="text-text-primary font-semibold hover:text-accent transition-colors text-left"
+              className="team-name"
             >
               {game.awayTeam}
             </button>
           </div>
-          <div className="text-text-primary font-bold text-lg">
+          <div className="score">
             {game.awayScore !== null ? game.awayScore : '-'}
           </div>
         </div>
       </div>
 
-      {/* Estatísticas rápidas (se disponíveis) */}
+      {/* Estatísticas */}
       {(game.homeStats || game.awayStats) && (
-        <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-text-secondary">
-          <div className="text-center">
-            <div>Posse</div>
-            <div className="text-text-primary font-semibold">
-              {game.homeStats?.possession || 0}%
-            </div>
+        <div className="stats-grid">
+          <div className="stat-item">
+            <div className="stat-value">{game.homeStats?.possession || 0}%</div>
+            <div className="stat-label">Posse</div>
           </div>
-          <div className="text-center">
-            <div>Chutes</div>
-            <div className="text-text-primary font-semibold">
-              {game.homeStats?.totalShots || 0}
-            </div>
+          <div className="stat-item">
+            <div className="stat-value">{game.homeStats?.totalShots || 0}</div>
+            <div className="stat-label">Chutes</div>
           </div>
-          <div className="text-center">
-            <div>Faltas</div>
-            <div className="text-text-primary font-semibold">
-              {game.homeStats?.fouls || 0}
-            </div>
+          <div className="stat-item">
+            <div className="stat-value">{game.homeStats?.fouls || 0}</div>
+            <div className="stat-label">Faltas</div>
           </div>
         </div>
       )}
 
-      {/* Previsão (se disponível) */}
+      {/* Previsão */}
       {game.prediction && (
-        <div className="mt-4 p-3 bg-gray-800/50 rounded-lg">
-          <div className="text-xs text-text-secondary mb-2">Previsão</div>
-          <div className="flex justify-between text-xs">
-            <div className="text-center">
-              <div className="text-green-400 font-semibold">
+        <div className="prediction">
+          <div className="prediction-title">Previsão</div>
+          <div className="prediction-grid">
+            <div>
+              <div className="prediction-value prediction-home">
                 {game.prediction.homeWinPercentage}%
               </div>
-              <div className="text-text-secondary">Casa</div>
+              <div className="prediction-label">Casa</div>
             </div>
-            <div className="text-center">
-              <div className="text-yellow-400 font-semibold">
+            <div>
+              <div className="prediction-value prediction-draw">
                 {game.prediction.drawPercentage}%
               </div>
-              <div className="text-text-secondary">Empate</div>
+              <div className="prediction-label">Empate</div>
             </div>
-            <div className="text-center">
-              <div className="text-blue-400 font-semibold">
+            <div>
+              <div className="prediction-value prediction-away">
                 {game.prediction.awayWinPercentage}%
               </div>
-              <div className="text-text-secondary">Fora</div>
+              <div className="prediction-label">Fora</div>
             </div>
           </div>
         </div>
       )}
 
       {/* Ações */}
-      <div className="mt-4 flex justify-between space-x-2">
+      <div className="actions-grid">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onH2HClick(game.homeTeam, game.awayTeam);
           }}
-          className="flex-1 bg-gray-700 hover:bg-gray-600 text-text-secondary hover:text-text-primary text-xs py-2 px-3 rounded transition-colors"
+          className="action-btn btn-h2h"
         >
           H2H
         </button>
@@ -180,7 +172,7 @@ const GameCard: React.FC<GameCardProps> = ({
             e.stopPropagation();
             onAiAnalysisClick(game);
           }}
-          className="flex-1 bg-accent hover:bg-accent-hover text-white text-xs py-2 px-3 rounded transition-colors"
+          className="action-btn btn-ai"
         >
           IA
         </button>
@@ -189,7 +181,7 @@ const GameCard: React.FC<GameCardProps> = ({
             e.stopPropagation();
             onChatClick(game);
           }}
-          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 px-3 rounded transition-colors"
+          className="action-btn btn-chat"
         >
           Chat
         </button>
