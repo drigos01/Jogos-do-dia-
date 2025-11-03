@@ -2,7 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { Game, PastGame, AiAnalysisResponse } from '../types';
 
-const API_KEY = process.env.jogosdodia;
+const API_KEY = process.env.AIzaSyAYFrvwyF57LT3HoecDgsNXtm1rmxjG5mo;
 
 if (!API_KEY) {
   throw new Error("API_KEY environment variable not set");
