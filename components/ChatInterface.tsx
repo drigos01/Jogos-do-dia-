@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from '../types';
 
@@ -5,15 +6,9 @@ interface ChatInterfaceProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => void;
   currentUser: string | null;
-  compact?: boolean;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({
-  messages,
-  onSendMessage,
-  currentUser,
-  compact = false
-}) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, currentUser }) => {
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -25,84 +20,64 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  const handleSend = () => {
-    if (newMessage.trim() && currentUser) {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newMessage.trim()) {
       onSendMessage(newMessage.trim());
       setNewMessage('');
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   return (
-    <div className={`flex flex-col ${compact ? 'h-64' : 'h-96'}`}>
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.length === 0 ? (
-          <div className="text-center text-text-secondary py-8">
-            <div className="text-4xl mb-2">💬</div>
-            <p>Nenhuma mensagem ainda</p>
-            <p className="text-sm">Seja o primeiro a comentar!</p>
-          </div>
-        ) : (
-          messages.map((message) => (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="p-2 text-center text-xs text-text-secondary bg-brand-bg/50">
+          <p><strong>Aviso:</strong> O histórico do chat é uma simulação e fica salvo apenas no seu navegador.</p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg) => {
+          const isCurrentUser = msg.username === currentUser;
+          return (
             <div
-              key={message.id}
-              className={`chat-message p-3 rounded-lg ${
-                message.username === currentUser
-                  ? 'bg-accent/20 ml-8'
-                  : 'bg-gray-800/30 mr-8'
-              }`}
+              key={msg.id}
+              className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
             >
-              <div className="flex justify-between items-start mb-1">
-                <span className={`text-sm font-semibold ${
-                  message.username === currentUser ? 'text-accent' : 'text-text-primary'
-                }`}>
-                  {message.username}
-                </span>
-                <span className="text-text-secondary text-xs">
-                  {formatTime(message.timestamp)}
-                </span>
+              <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
+                <span className="text-xs text-text-secondary px-1">{msg.username}</span>
+                <div
+                  className={`px-4 py-2 rounded-2xl max-w-xs md:max-w-md break-words ${
+                    isCurrentUser ? 'bg-accent text-white rounded-br-none' : 'bg-white/10 text-text-primary rounded-bl-none'
+                  }`}
+                >
+                  {msg.text}
+                </div>
               </div>
-              <p className="text-text-primary text-sm">{message.text}</p>
             </div>
-          ))
-        )}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
-
-      {/* Input */}
-      <div className="p-4 border-t border-gray-700">
-        <div className="flex space-x-2">
+      <div className="p-4 border-t border-white/10">
+        <form onSubmit={handleSubmit} className="flex gap-2">
           <input
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={currentUser ? "Digite sua mensagem..." : "Entre com um username..."}
+            placeholder="Digite sua mensagem..."
+            className="flex-1 bg-brand-bg/80 border border-white/20 rounded-full px-4 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+            autoComplete="off"
             disabled={!currentUser}
-            className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-text-primary placeholder-text-secondary text-sm focus:outline-none focus:border-accent"
           />
           <button
-            onClick={handleSend}
-            disabled={!newMessage.trim() || !currentUser}
-            className="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            type="submit"
+            className="bg-accent text-white rounded-full p-2.5 hover:bg-accent-hover transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-card-bg focus:ring-accent disabled:opacity-50"
+            aria-label="Enviar mensagem"
+            disabled={!currentUser || !newMessage.trim()}
           >
-            Enviar
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );

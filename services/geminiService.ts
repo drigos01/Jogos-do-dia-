@@ -1,319 +1,190 @@
+
+import { GoogleGenAI } from "@google/genai";
 import { Game, PastGame, AiAnalysisResponse } from '../types';
 
-// Mock data para quando a API não estiver disponível
-const MOCK_GAMES: Game[] = [
-  {
-    id: '1',
-    sport: 'Futebol',
-    date: '2024-01-15',
-    homeTeam: 'Flamengo',
-    homeLogo: '/team-logos/flamengo.png',
-    awayTeam: 'Palmeiras',
-    awayLogo: '/team-logos/palmeiras.png',
-    time: '16:00',
-    league: 'Brasileirão Série A',
-    homeScore: null,
-    awayScore: null,
-    status: 'SCHEDULED',
-    prediction: {
-      homeWinPercentage: 45,
-      awayWinPercentage: 30,
-      drawPercentage: 25
-    }
-  },
-  {
-    id: '2',
-    sport: 'Futebol',
-    date: '2024-01-15',
-    homeTeam: 'São Paulo',
-    homeLogo: '/team-logos/sao-paulo.png',
-    awayTeam: 'Corinthians',
-    awayLogo: '/team-logos/corinthians.png',
-    time: '19:00',
-    league: 'Brasileirão Série A',
-    homeScore: 2,
-    awayScore: 1,
-    status: 'FINISHED',
-    prediction: {
-      homeWinPercentage: 40,
-      awayWinPercentage: 35,
-      drawPercentage: 25
-    }
-  },
-  {
-    id: '3',
-    sport: 'Futebol',
-    date: '2024-01-15',
-    homeTeam: 'Grêmio',
-    homeLogo: '/team-logos/gremio.png',
-    awayTeam: 'Internacional',
-    awayLogo: '/team-logos/internacional.png',
-    time: '21:30',
-    league: 'Brasileirão Série A',
-    homeScore: 1,
-    awayScore: 1,
-    status: 'LIVE',
-    elapsedTime: 65,
-    homeStats: {
-      possession: 52,
-      shotsOnGoal: 5,
-      totalShots: 12,
-      corners: 4,
-      fouls: 8,
-      yellowCards: 2,
-      redCards: 0,
-      offsides: 1
-    },
-    awayStats: {
-      possession: 48,
-      shotsOnGoal: 3,
-      totalShots: 8,
-      corners: 2,
-      fouls: 10,
-      yellowCards: 1,
-      redCards: 0,
-      offsides: 2
-    }
-  }
-];
+const API_KEY = process.env.API_KEY;
 
-const MOCK_HISTORY: PastGame[] = [
-  {
-    date: '2024-01-08',
-    homeTeam: 'Flamengo',
-    homeLogo: '/team-logos/flamengo.png',
-    awayTeam: 'Palmeiras',
-    awayLogo: '/team-logos/palmeiras.png',
-    homeScore: 2,
-    awayScore: 1,
-    league: 'Brasileirão Série A'
-  },
-  {
-    date: '2023-12-15',
-    homeTeam: 'Palmeiras',
-    homeLogo: '/team-logos/palmeiras.png',
-    awayTeam: 'Flamengo',
-    awayLogo: '/team-logos/flamengo.png',
-    homeScore: 0,
-    awayScore: 0,
-    league: 'Brasileirão Série A'
-  }
-];
+if (!API_KEY) {
+  throw new Error("API_KEY environment variable not set");
+}
 
-// Função para buscar jogos do dia
-export const fetchGamesOfTheDay = async (): Promise<Game[]> => {
+const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+async function parseJsonResponse<T>(text: string): Promise<T> {
+    const jsonStart = text.indexOf('{');
+    const jsonEnd = text.lastIndexOf('}');
+    const arrayStart = text.indexOf('[');
+    const arrayEnd = text.lastIndexOf(']');
+
+    if ((jsonStart === -1 || jsonEnd === -1) && (arrayStart === -1 || arrayEnd === -1)) {
+        console.error("Invalid response format from API: No JSON object or array found", text);
+        throw new Error("A API retornou um formato de dados inválido.");
+    }
+
+    let jsonString: string;
+    if (arrayStart !== -1 && (arrayStart < jsonStart || jsonStart === -1)) {
+        // It's an array
+        jsonString = text.substring(arrayStart, arrayEnd + 1);
+    } else {
+        // It's an object
+        jsonString = text.substring(jsonStart, jsonEnd + 1);
+    }
+
+    try {
+      const parsedData = JSON.parse(jsonString);
+      return parsedData as T;
+    } catch (e) {
+      console.error("Failed to parse JSON:", e, "--- Original string was:", jsonString);
+      throw new Error("Falha ao processar a resposta da API. O formato do JSON é inválido.");
+    }
+}
+
+export async function fetchGamesOfTheDay(): Promise<Game[]> {
+  const prompt = `
+    Sua tarefa principal é atuar como um agregador de dados esportivos. Forneça uma lista o mais completa e EXAUSTIVA possível com absolutamente TODOS os jogos do dia de hoje de uma vasta gama de esportes populares (futebol, basquete, tênis, vôlei, e-sports, MMA, hóquei, futebol americano, etc.), incluindo ligas principais e também as menores.
+
+    Para cada jogo, você deve consultar e sintetizar informações de pelo menos 10 sites diferentes de apostas esportivas e análise para calcular uma probabilidade de resultado.
+
+    Forneça as seguintes informações em formato JSON:
+    - "id": um identificador único para o jogo (ex: 'futebol-brasileirao-FLAvsCOR-20241026')
+    - "sport": O nome do esporte (ex: 'Futebol', 'Basquete', 'Tênis')
+    - "date": A data do jogo no formato AAAA-MM-DD.
+    - "homeTeam": Nome do time/jogador da casa
+    - "homeLogo": URL da imagem do logo. REQUISITO EXTREMAMENTE CRÍTICO: A URL DEVE ser um link direto para um arquivo de imagem (extensões .png, .svg, .webp). A URL NUNCA PODE SER de uma página web (HTML), um link de busca ou um data URI. Faça uma busca rigorosa por logos oficiais. Se após uma busca exaustiva não encontrar um link DIRETO para o arquivo de imagem, use null. NÃO INVENTE URLs. Exemplo VÁLIDO: 'https://ssl.gstatic.com/onebox/media/sports/logos/z49oKj2Vj54u3WU9vK2s_g_96x96.png'. Exemplo INVÁLIDO: 'https://www.google.com/search?q=logo'.
+    - "awayTeam": Nome do time/jogador visitante
+    - "awayLogo": URL da imagem do logo (seguindo o mesmo REQUISITO CRÍTICO acima).
+    - "time": Se 'SCHEDULED', o horário (ex: '21:30'). Se 'LIVE', o status atual (ex: '45+2', 'Intervalo', 'Q3 5:12'). Se 'FINISHED', 'Encerrado'.
+    - "league": Nome do campeonato ou torneio
+    - "homeScore": Placar do time da casa
+    - "awayScore": Placar do time visitante
+    - "status": 'SCHEDULED', 'LIVE', 'FINISHED', ou 'POSTPONED'
+    - "elapsedTime": Apenas para futebol, o tempo em minutos (ex: 46). Para outros, use null.
+    - "homeStats": Objeto com estatísticas para o time da casa.
+    - "awayStats": Objeto com estatísticas para o time visitante.
+    - "prediction": Um objeto com a probabilidade de resultado baseada na sua análise agregada. Deve conter: { "homeWinPercentage": number, "awayWinPercentage": number, "drawPercentage": number }. Os valores devem ser a média das probabilidades encontradas nos sites consultados. A soma deve ser próxima de 100. Se o esporte não permite empate (ex: Tênis), "drawPercentage" deve ser 0 ou null.
+    - "whereToWatch": um array de objetos, onde cada objeto tem "name" (o nome do canal/serviço, ex: 'ESPN', 'Star+') e "url" (o link direto para a transmissão online, se aplicável e disponível). Se não for online, o campo "url" deve ser null. Se não houver informação de transmissão, retorne um array vazio [].
+
+    Se uma informação como placar ou estatística não estiver disponível ou o jogo não tiver começado, use null. No entanto, para jogos com status 'LIVE' ou 'FINISHED', o fornecimento de estatísticas detalhadas é OBRIGATÓRIO, sempre que os dados existirem. Forneça estatísticas relevantes para cada esporte.
+
+    O objeto de estatísticas pode conter: "fouls", "yellowCards", "redCards", "possession", "shotsOnGoal", "totalShots", "corners", "offsides", etc.
+
+    A resposta DEVE ser um array JSON puro, começando com '[' e terminando com ']'. Não inclua texto ou formatação markdown.
+  `;
+
   try {
-    // Simula delay de rede
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
     
-    // Retorna dados mockados por enquanto
-    // Em produção, você substituiria por uma chamada real à API
-    return MOCK_GAMES;
+    return parseJsonResponse<Game[]>(response.text);
+
   } catch (error) {
-    console.error('Erro ao buscar jogos:', error);
-    // Fallback para dados mockados em caso de erro
-    return MOCK_GAMES;
+    console.error('Error fetching data from Gemini API:', error);
+    throw new Error('Não foi possível buscar os jogos. Verifique sua conexão ou a chave da API.');
   }
-};
+}
 
-// Função para buscar histórico do time
-export const fetchTeamHistory = async (teamName: string): Promise<PastGame[]> => {
+async function fetchHistory(prompt: string): Promise<PastGame[]> {
   try {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Filtra jogos que envolvem o time
-    const teamGames = MOCK_HISTORY.filter(game => 
-      game.homeTeam === teamName || game.awayTeam === teamName
-    );
-    
-    return teamGames.length > 0 ? teamGames : MOCK_HISTORY;
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    return parseJsonResponse<PastGame[]>(response.text);
   } catch (error) {
-    console.error('Erro ao buscar histórico do time:', error);
-    return MOCK_HISTORY;
+    console.error('Error fetching history from Gemini API:', error);
+    throw new Error('Não foi possível buscar o histórico de jogos.');
   }
-};
+}
 
-// Função para buscar confronto direto
-export const fetchHeadToHeadHistory = async (homeTeam: string, awayTeam: string): Promise<PastGame[]> => {
-  try {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Filtra jogos entre os dois times
-    const h2hGames = MOCK_HISTORY.filter(game => 
-      (game.homeTeam === homeTeam && game.awayTeam === awayTeam) ||
-      (game.homeTeam === awayTeam && game.awayTeam === homeTeam)
-    );
-    
-    return h2hGames.length > 0 ? h2hGames : MOCK_HISTORY;
-  } catch (error) {
-    console.error('Erro ao buscar confronto direto:', error);
-    return MOCK_HISTORY;
-  }
-};
+export async function fetchTeamHistory(teamName: string): Promise<PastGame[]> {
+  const prompt = `
+    Forneça o histórico de jogos do time "${teamName}" do último mês.
+    A resposta DEVE ser um array JSON puro de objetos, onde cada objeto representa um jogo e contém os seguintes campos:
+    - "date": Data do jogo (ex: "25/09/2024")
+    - "homeTeam": Nome do time da casa
+    - "homeLogo": URL da imagem do logo do time da casa. REQUISITO CRÍTICO: Use a mesma lógica rigorosa para encontrar logos que a busca principal de jogos: link direto para um arquivo de imagem (.png, .svg), não uma página web. Se não encontrar, use null.
+    - "awayTeam": Nome do time visitante
+    - "awayLogo": URL da imagem do logo do time visitante (seguindo o mesmo requisito crítico).
+    - "homeScore": Placar do time da casa.
+    - "awayScore": Placar do time visitante.
+    - "league": Nome do campeonato.
 
-// Função para análise com IA usando Gemini
-export const fetchAiAnalysis = async (game: Game, analysisType: 'quick' | 'deep'): Promise<AiAnalysisResponse> => {
-  try {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-    
-    if (!apiKey) {
-      throw new Error('Chave da API Gemini não configurada');
-    }
+    Se não houver jogos no último mês, retorne um array vazio [].
+    A resposta DEVE começar com '[' e terminando com ']'. Não inclua nenhum outro texto.
+  `;
+  return fetchHistory(prompt);
+}
 
-    // URL da API do Gemini
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+export async function fetchHeadToHeadHistory(homeTeam: string, awayTeam: string): Promise<PastGame[]> {
+  const prompt = `
+    Forneça o histórico dos últimos 10 confrontos diretos (Head-to-Head) entre "${homeTeam}" e "${awayTeam}".
+    A resposta DEVE ser um array JSON puro de objetos, ordenado do mais recente para o mais antigo, onde cada objeto representa um jogo e contém os seguintes campos:
+    - "date": Data do jogo (ex: "25/09/2024")
+    - "homeTeam": Nome do time da casa
+    - "homeLogo": URL da imagem do logo do time da casa. REQUISITO CRÍTICO: Use a mesma lógica rigorosa para encontrar logos que a busca principal de jogos: link direto para um arquivo de imagem (.png, .svg), não uma página web. Se não encontrar, use null.
+    - "awayTeam": Nome do time visitante
+    - "awayLogo": URL da imagem do logo do time visitante (seguindo o mesmo requisito crítico).
+    - "homeScore": Placar do time da casa.
+    - "awayScore": Placar do time visitante.
+    - "league": Nome do campeonato.
     
-    const prompt = analysisType === 'quick' 
-      ? `Faça uma análise rápida do jogo entre ${game.homeTeam} vs ${game.awayTeam} no campeonato ${game.league}. 
-         Considere: forma recente, histórico de confrontos, jogadores importantes. 
-         Forneça: vencedor provável, confiança (0-100%), probabilidades (casa, empate, fora), 3 fatores-chave.`
-      : `Faça uma análise detalhada e profunda do jogo entre ${game.homeTeam} vs ${game.awayTeam} no campeonato ${game.league}.
-         Inclua: análise tática, forma dos times, lesões, momento psicológico, estatísticas históricas, fatores externos.
-         Forneça: vencedor provável, confiança (0-100%), probabilidades detalhadas, 5+ fatores-chave, análise detalhada.`;
+    Se não houver histórico de confrontos, retorne um array vazio [].
+    A resposta DEVE começar com '[' e terminando com ']'. Não inclua nenhum outro texto.
+  `;
+  return fetchHistory(prompt);
+}
 
-    const requestBody = {
-      contents: [
+export async function fetchAiAnalysis(game: Game, type: 'quick' | 'deep'): Promise<AiAnalysisResponse> {
+    const analysisInstructions = type === 'quick' 
+    ? "Sua análise deve ser concisa, baseada principalmente nos dados fornecidos e em conhecimentos gerais. Não precisa buscar fontes externas."
+    : "Sua análise deve ser PROFUNDA. Você DEVE buscar informações externas e em tempo real (notícias de lesões, momento da equipe, táticas) para enriquecer sua análise. É OBRIGATÓRIO listar as URLs das fontes que você usou.";
+
+    const prompt = `
+        Você é um analista esportivo de IA de elite. Sua tarefa é realizar uma análise detalhada do jogo abaixo e retornar sua conclusão em um formato JSON ESTRITO.
+
+        Dados Base do Jogo:
+        ${JSON.stringify(game, null, 2)}
+
+        Instruções de Análise:
+        ${analysisInstructions}
+
+        A resposta DEVE ser um único objeto JSON com a seguinte estrutura:
         {
-          parts: [
-            {
-              text: prompt
-            }
+          "predictedWinner": "Nome do Time Vencedor ou 'Empate'",
+          "confidence": um número de 0 a 100 representando sua confiança na previsão,
+          "probabilities": { "home": number, "away": number, "draw": number },
+          "keyFactors": [
+            "Um fator chave que influenciou sua decisão.",
+            "Outro fator importante.",
+            "Um terceiro ponto relevante."
+          ],
+          "detailedAnalysis": "Um parágrafo com sua análise textual completa, explicando o raciocínio por trás da previsão.",
+          "sources": [
+            "URL da fonte 1 (se aplicável, especialmente para análise profunda)",
+            "URL da fonte 2",
+            ...
           ]
         }
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: analysisType === 'quick' ? 1024 : 2048,
-      }
-    };
-
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Erro na API Gemini: ${errorData.error?.message || 'Erro desconhecido'}`);
+        
+        Não inclua nenhum texto, explicação ou markdown fora do objeto JSON. A resposta deve começar com '{' e terminar com '}'.
+    `;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro', // Using a more powerful model for better analysis
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+            }
+        });
+        
+        // The API with responseMimeType should return a clean JSON string
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText) as AiAnalysisResponse;
+    } catch (error) {
+        console.error('Error fetching analysis from Gemini API:', error);
+        throw new Error('Não foi possível realizar a análise de IA.');
     }
-
-    const data = await response.json();
-    
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Resposta inválida da API Gemini');
-    }
-
-    const analysisText = data.candidates[0].content.parts[0].text;
-    
-    // Parse da resposta (em produção, você implementaria um parser mais robusto)
-    return parseGeminiResponse(analysisText, game, analysisType);
-    
-  } catch (error) {
-    console.error('Erro na análise com IA:', error);
-    
-    // Fallback para análise mockada em caso de erro
-    return getMockAnalysis(game, analysisType);
-  }
-};
-
-// Função para parsear a resposta do Gemini
-const parseGeminiResponse = (text: string, game: Game, analysisType: 'quick' | 'deep'): AiAnalysisResponse => {
-  // Implementação básica de parser - em produção você melhoraria isso
-  const lines = text.split('\n').filter(line => line.trim());
-  
-  const mockAnalysis = getMockAnalysis(game, analysisType);
-  
-  // Tenta extrair informações da resposta
-  try {
-    const predictedWinner = extractWinner(text) || mockAnalysis.predictedWinner;
-    const confidence = extractConfidence(text) || mockAnalysis.confidence;
-    const probabilities = extractProbabilities(text) || mockAnalysis.probabilities;
-    const keyFactors = extractKeyFactors(text) || mockAnalysis.keyFactors;
-    
-    return {
-      predictedWinner,
-      confidence,
-      probabilities,
-      keyFactors,
-      detailedAnalysis: text,
-      sources: ['Análise IA Gemini', 'Dados históricos', 'Estatísticas recentes']
-    };
-  } catch (error) {
-    console.error('Erro ao parsear resposta Gemini, usando fallback:', error);
-    return mockAnalysis;
-  }
-};
-
-// Funções auxiliares para parsear a resposta
-const extractWinner = (text: string): string | null => {
-  const winnerMatches = text.match(/(vencedor|provável|ganhador).*?:.*?([A-Za-zÀ-ÿ\s]+)/i);
-  return winnerMatches ? winnerMatches[2].trim() : null;
-};
-
-const extractConfidence = (text: string): number | null => {
-  const confidenceMatches = text.match(/(confiança|certeza).*?(\d+)%/i);
-  return confidenceMatches ? parseInt(confidenceMatches[2]) : null;
-};
-
-const extractProbabilities = (text: string): { home: number; away: number; draw: number } | null => {
-  const probMatches = text.match(/(casa|home).*?(\d+)%.*(fora|away).*?(\d+)%.*(empate|draw).*?(\d+)%/i);
-  if (probMatches) {
-    return {
-      home: parseInt(probMatches[2]),
-      away: parseInt(probMatches[4]),
-      draw: parseInt(probMatches[6])
-    };
-  }
-  return null;
-};
-
-const extractKeyFactors = (text: string): string[] => {
-  const factors: string[] = [];
-  const lines = text.split('\n');
-  
-  for (const line of lines) {
-    if (line.match(/\d+\.\s|-\s|\•\s/) && line.length > 10) {
-      factors.push(line.replace(/^\d+\.\s|-\s|\•\s/, '').trim());
-    }
-    if (factors.length >= 5) break;
-  }
-  
-  return factors.length > 0 ? factors : ['Forma recente dos times', 'Histórico de confrontos', 'Fator casa'];
-};
-
-// Análise mockada para fallback
-const getMockAnalysis = (game: Game, analysisType: 'quick' | 'deep'): AiAnalysisResponse => {
-  const isQuick = analysisType === 'quick';
-  
-  return {
-    predictedWinner: game.homeTeam,
-    confidence: isQuick ? 65 : 72,
-    probabilities: {
-      home: isQuick ? 45 : 48,
-      away: isQuick ? 30 : 28,
-      draw: isQuick ? 25 : 24
-    },
-    keyFactors: isQuick 
-      ? [
-          'Fator casa para o time mandante',
-          'Histórico positivo em confrontos similares',
-          'Momento melhor da equipe da casa'
-        ]
-      : [
-          'Vantagem do fator casa com torcida presente',
-          'Desempenho superior no último mês',
-          'Lesões no time visitante',
-          'Melhor aproveitamento ofensivo',
-          'Sistema defensivo mais organizado'
-        ],
-    detailedAnalysis: isQuick
-      ? `Análise rápida: ${game.homeTeam} tem vantagem do fator casa e momento ligeiramente melhor. Expectativa de vitória da equipe mandante com 65% de confiança.`
-      : `Análise detalhada: Considerando todos os fatores táticos, históricos e momentâneos, ${game.homeTeam} apresenta vantagem significativa. Sistema defensivo sólido combinado com poder ofensivo deve garantir o resultado positivo. Confiança de 72% na vitória caseira.`,
-    sources: ['Análise estatística', 'Dados históricos', 'Forma recente']
-  };
-};
+}
