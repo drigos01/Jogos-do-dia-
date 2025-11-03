@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Modal from './Modal';
 
@@ -9,40 +8,49 @@ interface UsernameModalProps {
 }
 
 const UsernameModal: React.FC<UsernameModalProps> = ({ isOpen, onClose, onSave }) => {
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim()) {
-      onSave(name.trim());
+    if (username.trim()) {
+      onSave(username.trim());
+      setUsername('');
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Defina seu nome de usuário">
+    <Modal isOpen={isOpen} onClose={onClose} title="Escolha seu Username">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-text-secondary">
-          Para participar do chat, por favor, escolha um nome de usuário. Ele será salvo no seu navegador.
-        </p>
         <div>
-          <label htmlFor="username" className="sr-only">Nome de usuário</label>
+          <label htmlFor="username" className="block text-text-secondary text-sm mb-2">
+            Digite um username para participar do chat:
+          </label>
           <input
             id="username"
             type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Seu nome no chat"
-            className="w-full bg-brand-bg/80 border border-white/20 rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-            required
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Seu username..."
+            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-text-primary placeholder-text-secondary focus:outline-none focus:border-accent"
+            maxLength={20}
             autoFocus
           />
         </div>
-        <div className="flex justify-end">
+        
+        <div className="flex justify-end space-x-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
+          >
+            Cancelar
+          </button>
           <button
             type="submit"
-            className="px-6 py-2 bg-accent text-white font-bold rounded-lg hover:bg-accent-hover transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-card-bg focus:ring-accent"
+            disabled={!username.trim()}
+            className="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50"
           >
-            Salvar e Entrar no Chat
+            Entrar no Chat
           </button>
         </div>
       </form>
